@@ -5,7 +5,6 @@ Manage SEPA (Single Euro Payments Area) Credit and Debit Transfer for SEPA or in
 Only one PaymentInformation is managed but it can manage multiple transactions. 
 - The debtor is common to all transactions in a Credit transfer.
 - The creditor is common to all transactions in a Debit transfer.
-- test
 
 It follow "Customer Credit Transfer Initiation" &lt;pain.001.001.03&gt; defined in ISO 20022 but also some specific french rules (field used size != allowed size). Debit uses &lt;pain.008.001.02&gt; defined in ISO 20022 and the same french restrictions.
 
