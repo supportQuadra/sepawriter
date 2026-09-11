@@ -257,6 +257,138 @@ namespace SepaWriter.Test
             validator.Validate(transfert.AsXmlString());
         }
 
+        private static SepaPostalAddress CreateStructuredAddress()
+        {
+            return new SepaPostalAddress
+            {
+                StrtNm = "12 RUE DE LA PAIX",
+                PstCd = "75002",
+                TwnNm = "PARIS",
+                Ctry = "FR"
+            };
+        }
+
+        private static SepaDebitTransfer GetPain00800108Transfert()
+        {
+            var transfert = new SepaDebitTransfer
+            {
+                CreationDate = new DateTime(2026, 11, 02, 10, 30, 00),
+                RequestedExecutionDate = new DateTime(2026, 11, 05),
+                MessageIdentification = "transferID",
+                PaymentInfoId = "paymentInfo",
+                InitiatingPartyName = "Me",
+                PersonId = "FR00ZZZ123456",
+                Schema = SepaSchema.Pain00800108,
+                Creditor = Creditor
+            };
+
+            var trans = CreateTransaction("Transaction Id 1", 23.45m, "Transaction description");
+            trans.Debtor.Address = CreateStructuredAddress();
+            trans.EndToEndId = "multiple1";
+            transfert.AddDebitTransfer(trans);
+
+            // second transaction without any address: the PstlAdr element must stay optional
+            transfert.AddDebitTransfer(CreateTransaction("Transaction Id 2", 12.56m, "Transaction description 2"));
+
+            return transfert;
+        }
+
+        [Test]
+        public void ShouldValidateThePain00800108XmlSchema()
+        {
+            var transfert = GetPain00800108Transfert();
+
+            var validator = XmlValidator.GetValidator(transfert.Schema);
+            Assert.True(validator.Validate(transfert.AsXmlString()));
+        }
+
+        [Test]
+        public void ShouldValidateThePain00800108XmlSchemaWithAnAddressType()
+        {
+            var transfert = new SepaDebitTransfer
+            {
+                CreationDate = new DateTime(2026, 11, 02, 10, 30, 00),
+                RequestedExecutionDate = new DateTime(2026, 11, 05),
+                MessageIdentification = "transferID",
+                PaymentInfoId = "paymentInfo",
+                InitiatingPartyName = "Me",
+                PersonId = "FR00ZZZ123456",
+                Schema = SepaSchema.Pain00800108,
+                Creditor = Creditor
+            };
+
+            var address = CreateStructuredAddress();
+            address.AddressType = PostalAddressType.ADDR;
+
+            var trans = CreateTransaction("Transaction Id 1", 23.45m, "Transaction description");
+            trans.Debtor.Address = address;
+            transfert.AddDebitTransfer(trans);
+
+            string result = transfert.AsXmlString();
+
+            // AddressType3Choice since pain.008.001.08
+            Assert.True(result.Contains("<PstlAdr><AdrTp><Cd>ADDR</Cd></AdrTp><StrtNm>12 RUE DE LA PAIX</StrtNm>"));
+            Assert.True(XmlValidator.GetValidator(transfert.Schema).Validate(result));
+        }
+
+        [Test]
+        public void ShouldUseBicFiAndDebtorPostalAddressForPain00800108()
+        {
+            string result = GetPain00800108Transfert().AsXmlString();
+
+            Assert.True(result.Contains("xmlns=\"urn:iso:std:iso:20022:tech:xsd:pain.008.001.08\""));
+            Assert.True(result.Contains("<CdtrAgt><FinInstnId><BICFI>SOGEFRPPXXX</BICFI></FinInstnId></CdtrAgt>"));
+            Assert.True(result.Contains("<DbtrAgt><FinInstnId><BICFI>AGRIFRPPXXX</BICFI></FinInstnId></DbtrAgt>"));
+            Assert.False(result.Contains("<BIC>"));
+            Assert.True(result.Contains("<Dbtr><Nm>THEIR_NAME</Nm><PstlAdr><StrtNm>12 RUE DE LA PAIX</StrtNm><PstCd>75002</PstCd><TwnNm>PARIS</TwnNm><Ctry>FR</Ctry></PstlAdr></Dbtr>"));
+            // no address on our own company: the Cdtr element stays limited to its name
+            Assert.True(result.Contains("<Cdtr><Nm>My Corp</Nm></Cdtr>"));
+        }
+
+        [Test]
+        public void ShouldGenerateCreditorPostalAddressForPain00800108()
+        {
+            var transfert = new SepaDebitTransfer
+            {
+                CreationDate = new DateTime(2026, 11, 02, 10, 30, 00),
+                RequestedExecutionDate = new DateTime(2026, 11, 05),
+                MessageIdentification = "transferID",
+                PaymentInfoId = "paymentInfo",
+                InitiatingPartyName = "Me",
+                PersonId = "FR00ZZZ123456",
+                Schema = SepaSchema.Pain00800108,
+                Creditor = new SepaIbanData
+                {
+                    Bic = Creditor.Bic,
+                    Iban = Creditor.Iban,
+                    Name = Creditor.Name,
+                    Address = CreateStructuredAddress()
+                }
+            };
+            transfert.AddDebitTransfer(CreateTransaction("Transaction Id 1", 23.45m, "Transaction description"));
+
+            string result = transfert.AsXmlString();
+
+            Assert.True(result.Contains("<Cdtr><Nm>My Corp</Nm><PstlAdr><StrtNm>12 RUE DE LA PAIX</StrtNm><PstCd>75002</PstCd><TwnNm>PARIS</TwnNm><Ctry>FR</Ctry></PstlAdr></Cdtr>"));
+            Assert.True(XmlValidator.GetValidator(transfert.Schema).Validate(result));
+        }
+
+        [Test]
+        public void ShouldKeepBicForPain00800102()
+        {
+            string result = GetOneTransactionDebitTransfert(23.45m).AsXmlString();
+
+            Assert.True(result.Contains("<CdtrAgt><FinInstnId><BIC>SOGEFRPPXXX</BIC></FinInstnId></CdtrAgt>"));
+            Assert.True(result.Contains("<DbtrAgt><FinInstnId><BIC>AGRIFRPPXXX</BIC></FinInstnId></DbtrAgt>"));
+            Assert.False(result.Contains("<BICFI>"));
+        }
+
+        [Test]
+        public void ShouldUsePain00800102AsDefaultSchema()
+        {
+            Assert.AreEqual(SepaSchema.Pain00800102, new SepaDebitTransfer().Schema);
+        }
+
         [Test]
         public void ShouldRejectNotAllowedXmlSchema()
         {

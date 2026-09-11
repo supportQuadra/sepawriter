@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Xml;
 using SepaWriter.Utils;
 
@@ -16,7 +17,9 @@ namespace SepaWriter
         protected SepaIbanData SepaIban;
         protected readonly List<T> transactions = new List<T>();
 
-        protected SepaSchema schema;
+        protected readonly List<SepaPayment<T>> payments = new List<SepaPayment<T>>();
+
+		protected SepaSchema schema;
 
         /// <summary>
         ///     Number of payment transactions.
@@ -116,7 +119,7 @@ namespace SepaWriter
         /// </summary>
         /// <param name="transfer"></param>
         /// <exception cref="ArgumentNullException">If transfert is null.</exception>
-        protected void AddTransfer(T transfer)
+        protected void AddTransfer(T transfer, DateTime? requestedExecutionDate = null)
         {
             if (transfer == null)
                 throw new ArgumentNullException("transfer");
@@ -125,29 +128,55 @@ namespace SepaWriter
             if (transfer.EndToEndId == null)
                 transfer.EndToEndId = (PaymentInfoId ?? MessageIdentification) + "/" + (numberOfTransactions + 1);
             CheckTransactionIdUnicity(transfer.Id, transfer.EndToEndId);
-            transactions.Add(transfer);
+            if (requestedExecutionDate.HasValue)
+            {
+                SepaPayment<T> payement = payments.FirstOrDefault(p => p.RequestedExecutionDate.Equals(requestedExecutionDate));
+                if (payement == null)
+                {
+                    payement = new SepaPayment<T>()
+                    {
+                        RequestedExecutionDate = requestedExecutionDate.Value,
+                    };
+
+					payments.Add(payement);
+
+				}
+                payement.AddTransfer(transfer);
+			}
+            else
+                transactions.Add(transfer);
             numberOfTransactions++;
             headerControlSum += transfer.Amount;
             paymentControlSum += transfer.Amount;
         }
 
-        /// <summary>
-        ///     Check If the id is not defined in others transactions excepts null values
-        /// </summary>
-        /// <param name="id"></param>
-        /// <param name="endToEndId"></param>
-        /// <exception cref="SepaRuleException">If an id is already used.</exception>
-        private void CheckTransactionIdUnicity(string id, string endToEndId)
+        protected List<T> GetTransfer()
+        {
+            List<T> transferts = transactions.Select(t => (T)t.Clone()).ToList();
+            if (payments != null)
+                transferts.AddRange(payments.SelectMany(p => p.Transactions));
+            return transferts;
+
+		}
+
+
+		/// <summary>
+		///     Check If the id is not defined in others transactions excepts null values
+		/// </summary>
+		/// <param name="id"></param>
+		/// <param name="endToEndId"></param>
+		/// <exception cref="SepaRuleException">If an id is already used.</exception>
+		private void CheckTransactionIdUnicity(string id, string endToEndId)
         {
             if (id == null)
                 return;
 
-            if (transactions.Exists(transfert => transfert.Id != null && transfert.Id == id))
+            if (GetTransfer().Exists(transfert => transfert.Id != null && transfert.Id == id))
             {
                 throw new SepaRuleException("Transaction Id '" + id + "' must be unique in a transfer.");
             }
 
-            if (transactions.Exists(transfert => transfert.EndToEndId != null && transfert.EndToEndId == endToEndId))
+            if (GetTransfer().Exists(transfert => transfert.EndToEndId != null && transfert.EndToEndId == endToEndId))
             {
                 throw new SepaRuleException("End to End Id '" + endToEndId + "' must be unique in a transfer.");
             }
@@ -157,7 +186,13 @@ namespace SepaWriter
         {
             var pstlAdr = ibanData.NewElement("PstlAdr");
             if (address.AddressType.HasValue)
-                pstlAdr.NewElement("AdrTp", address.AddressType.ToString());
+            {
+                // Since pain.001.001.09 / pain.008.001.08, AdrTp is an AddressType3Choice (Cd or Prtry)
+                if (SepaSchemaUtils.IsIso20022V2019(schema))
+                    pstlAdr.NewElement("AdrTp").NewElement("Cd", address.AddressType.ToString());
+                else
+                    pstlAdr.NewElement("AdrTp", address.AddressType.ToString());
+            }
             if (!String.IsNullOrEmpty(address.Dept))
                 pstlAdr.NewElement("Dept", address.Dept);
             if (!String.IsNullOrEmpty(address.SubDept))
@@ -185,7 +220,7 @@ namespace SepaWriter
         /// <exception cref="SepaRuleException">If mandatory data is missing.</exception>
         protected virtual void CheckMandatoryData()
         {
-            if (transactions.Count == 0)
+            if (GetTransfer().Count == 0)
             {
                 throw new SepaRuleException("At least one transaction is needed in a transfer.");
             }
