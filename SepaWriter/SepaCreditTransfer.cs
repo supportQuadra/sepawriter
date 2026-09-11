@@ -173,7 +173,11 @@ namespace SepaWriter
             DateTime requestedExecutionDate = this.RequestedExecutionDate;
             if (payment != null)
                 requestedExecutionDate = payment.RequestedExecutionDate;
-			pmtInf.NewElement("ReqdExctnDt", StringUtils.FormatDate(requestedExecutionDate));
+			// Since pain.001.001.09, ReqdExctnDt is a DateAndDateTime2Choice (Dt or DtTm)
+			if (SepaSchemaUtils.IsIso20022V2019(schema))
+				pmtInf.NewElement("ReqdExctnDt").NewElement("Dt", StringUtils.FormatDate(requestedExecutionDate));
+			else
+				pmtInf.NewElement("ReqdExctnDt", StringUtils.FormatDate(requestedExecutionDate));
 			var dbtr = pmtInf.NewElement("Dbtr");
 			dbtr.NewElement("Nm", Debtor.Name);
 			if (Debtor.Address != null)
@@ -192,7 +196,7 @@ namespace SepaWriter
 			dbtrAcct.NewElement("Ccy", DebtorAccountCurrency);
 
 			var finInstnId = pmtInf.NewElement("DbtrAgt").NewElement("FinInstnId");
-			finInstnId.NewElement("BIC", Debtor.Bic);
+			finInstnId.NewElement(SepaSchemaUtils.BicElementName(schema), Debtor.Bic);
 			if (Debtor.AgentAddress != null)
 			{
 				AddPostalAddressElements(finInstnId, Debtor.AgentAddress);
@@ -233,7 +237,7 @@ namespace SepaWriter
             cdtTrfTxInf.NewElement("Amt")
                        .NewElement("InstdAmt", StringUtils.FormatAmount(transfer.Amount))
                        .SetAttribute("Ccy", transfer.Currency);
-            XmlUtils.CreateBic(cdtTrfTxInf.NewElement("CdtrAgt"), transfer.Creditor);
+            XmlUtils.CreateBic(cdtTrfTxInf.NewElement("CdtrAgt"), transfer.Creditor, schema);
             var cdtr = cdtTrfTxInf.NewElement("Cdtr");
             cdtr.NewElement("Nm", transfer.Creditor.Name);
             if (transfer.Creditor.Address != null)
@@ -268,7 +272,8 @@ namespace SepaWriter
         }
         protected override bool CheckSchema(SepaSchema aSchema)
         {
-            return aSchema == SepaSchema.Pain00100103 || aSchema == SepaSchema.Pain00100104;
+            return aSchema == SepaSchema.Pain00100103 || aSchema == SepaSchema.Pain00100104
+                   || aSchema == SepaSchema.Pain00100109;
         }
     }
 }
