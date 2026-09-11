@@ -11,8 +11,10 @@
   <ItemGroup>
     <None Remove="Xsd\pain.001.001.03.xsd" />
     <None Remove="Xsd\pain.001.001.04.xsd" />
+    <None Remove="Xsd\pain.001.001.09.xsd" />
     <None Remove="Xsd\pain.008.001.02.xsd" />
     <None Remove="Xsd\pain.008.001.03.xsd" />
+    <None Remove="Xsd\pain.008.001.08.xsd" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="log4net" Version="2.0.12" />
@@ -21,8 +23,10 @@
   <ItemGroup>
     <EmbeddedResource Include="Xsd\pain.001.001.03.xsd" />
     <EmbeddedResource Include="Xsd\pain.001.001.04.xsd" />
+    <EmbeddedResource Include="Xsd\pain.001.001.09.xsd" />
     <EmbeddedResource Include="Xsd\pain.008.001.02.xsd" />
     <EmbeddedResource Include="Xsd\pain.008.001.03.xsd" />
+    <EmbeddedResource Include="Xsd\pain.008.001.08.xsd" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -34,7 +38,7 @@
     <Company>Quadra Diffusion</Company>
     <PackAsTool>False</PackAsTool>
     <PackageProjectUrl></PackageProjectUrl>
-    <Version>1.0.2</Version>
+    <Version>1.0.3</Version>
   </PropertyGroup>
 
 </Project>

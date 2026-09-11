@@ -186,7 +186,13 @@ namespace SepaWriter
         {
             var pstlAdr = ibanData.NewElement("PstlAdr");
             if (address.AddressType.HasValue)
-                pstlAdr.NewElement("AdrTp", address.AddressType.ToString());
+            {
+                // Since pain.001.001.09 / pain.008.001.08, AdrTp is an AddressType3Choice (Cd or Prtry)
+                if (SepaSchemaUtils.IsIso20022V2019(schema))
+                    pstlAdr.NewElement("AdrTp").NewElement("Cd", address.AddressType.ToString());
+                else
+                    pstlAdr.NewElement("AdrTp", address.AddressType.ToString());
+            }
             if (!String.IsNullOrEmpty(address.Dept))
                 pstlAdr.NewElement("Dept", address.Dept);
             if (!String.IsNullOrEmpty(address.SubDept))
