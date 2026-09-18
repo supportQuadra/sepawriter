@@ -28,6 +28,16 @@
     <EmbeddedResource Include="Xsd\pain.008.001.03.xsd" />
     <EmbeddedResource Include="Xsd\pain.008.001.08.xsd" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
   <PropertyGroup>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
@@ -39,6 +49,8 @@
     <PackAsTool>False</PackAsTool>
     <PackageProjectUrl></PackageProjectUrl>
     <Version>1.0.3</Version>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
 </Project>
