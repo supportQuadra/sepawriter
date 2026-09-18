@@ -17,16 +17,6 @@ namespace SepaWriter.Utils
         {
             return document.SelectSingleNode("//" + nodeName) as XmlElement; 
         }
-        /// <summary>
-        ///     Create a BIC, using the "BIC" element name (schemas up to pain.001.001.04 / pain.008.001.03)
-        /// </summary>
-        /// <param name="element">The Xml element</param>
-        /// <param name="iban">The iban</param>
-        /// <returns></returns>
-        public static void CreateBic(XmlElement element, SepaIbanData iban)
-        {
-            CreateBic(element, iban, SepaSchema.Pain00100103);
-        }
 
         /// <summary>
         ///     Create a BIC using the element name expected by the provided schema
@@ -36,7 +26,7 @@ namespace SepaWriter.Utils
         /// <param name="iban">The iban</param>
         /// <param name="schema">The schema of the generated file</param>
         /// <returns></returns>
-        public static void CreateBic(XmlElement element, SepaIbanData iban, SepaSchema schema)
+        public static void CreateBic(XmlElement element, SepaIbanData iban, SepaSchema schema = SepaSchema.Pain00100103)
         {
             if (iban.UnknownBic)
             {
