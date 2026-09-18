@@ -66,9 +66,9 @@ namespace SepaWriter
         /// </summary>
         /// <param name="transfer"></param>
         /// <exception cref="ArgumentNullException">If transfert is null.</exception>
-        public void AddDebitTransfer(SepaDebitTransferTransaction transfer)
+        public void AddDebitTransfer(SepaDebitTransferTransaction transfer,DateTime? requestedExecutionDate=null)
         {
-            AddTransfer(transfer);
+            AddTransfer(transfer, requestedExecutionDate);
         }
 
         /// <summary>
@@ -99,24 +99,35 @@ namespace SepaWriter
 					NewElement("Othr").NewElement("Id", InitiatingPartyId);
 			}
 
-            // Part 2: Payment Information for each Sequence Type.
-            foreach (SepaSequenceType seqTp in Enum.GetValues(typeof(SepaSequenceType)))
-            {
-                var seqTransactions = transactions.FindAll(d => d.SequenceType == seqTp);
-                var pmtInf = GeneratePaymentInformation(xml, seqTp, seqTransactions);
-                // If a payment information has been created
-                if (pmtInf != null)
-                {
-                    // Part 3: Debit Transfer Transaction Information
-                    foreach (var transfer in seqTransactions)
-                    {
-                        GenerateTransaction(pmtInf, transfer);
-                    }
-                }
-            }
-
+            if (payments != null && payments.Count > 0)
+                payments.ForEach(payment => GenerateAllPayment(xml, payment.RequestedExecutionDate, payment.Transactions));
+            else
+                GenerateAllPayment(xml);
             return xml;
         }
+
+
+        private void GenerateAllPayment(XmlDocument xml, DateTime? requestedExecutionDate= null, List<SepaDebitTransferTransaction> transactionsPayement = null)
+        {
+            List<SepaDebitTransferTransaction> trans = transactions;
+
+			if (transactionsPayement != null)
+				trans = transactionsPayement;
+			foreach (SepaSequenceType seqTp in Enum.GetValues(typeof(SepaSequenceType)))
+			{
+				var seqTransactions = trans.FindAll(d => d.SequenceType == seqTp);
+				var pmtInf = GeneratePaymentInformation(xml, seqTp, seqTransactions, requestedExecutionDate);
+				// If a payment information has been created
+				if (pmtInf != null)
+				{
+					// Part 3: Debit Transfer Transaction Information
+					foreach (var transfer in seqTransactions)
+					{
+						GenerateTransaction(pmtInf, transfer);
+					}
+				}
+			}
+		}
 
         /// <summary>
         /// Generate a Payment Information node for a Sequence Type.
@@ -124,7 +135,7 @@ namespace SepaWriter
         /// <param name="xml">The XML object to write</param>
         /// <param name="sqType">The Sequence Type</param>
         /// <param name="seqTransactions">The transactions of the specified type</param>
-        private XmlElement GeneratePaymentInformation(XmlDocument xml, SepaSequenceType sqType, IEnumerable<SepaDebitTransferTransaction> seqTransactions)
+        private XmlElement GeneratePaymentInformation(XmlDocument xml, SepaSequenceType sqType, IEnumerable<SepaDebitTransferTransaction> seqTransactions,DateTime? requestedExecutionDate = null)
         {
             int controlNumber = 0;
             decimal controlSum = 0;
@@ -153,15 +164,22 @@ namespace SepaWriter
             pmtTpInf.NewElement("SvcLvl").NewElement("Cd", "SEPA");
             pmtTpInf.NewElement("LclInstrm").NewElement("Cd", LocalInstrumentCode);
             pmtTpInf.NewElement("SeqTp", SepaSequenceTypeUtils.SepaSequenceTypeToString(sqType));
-
-            pmtInf.NewElement("ReqdColltnDt", StringUtils.FormatDate(RequestedExecutionDate));
-            pmtInf.NewElement("Cdtr").NewElement("Nm", Creditor.Name);
+            if (requestedExecutionDate.HasValue)
+                pmtInf.NewElement("ReqdColltnDt", StringUtils.FormatDate(requestedExecutionDate.Value));
+            else
+                pmtInf.NewElement("ReqdColltnDt", StringUtils.FormatDate(RequestedExecutionDate));
+            var cdtr = pmtInf.NewElement("Cdtr");
+            cdtr.NewElement("Nm", Creditor.Name);
+            if (Creditor.Address != null)
+            {
+                AddPostalAddressElements(cdtr, Creditor.Address);
+            }
 
             var dbtrAcct = pmtInf.NewElement("CdtrAcct");
             dbtrAcct.NewElement("Id").NewElement("IBAN", Creditor.Iban);
             dbtrAcct.NewElement("Ccy", CreditorAccountCurrency);
 
-            pmtInf.NewElement("CdtrAgt").NewElement("FinInstnId").NewElement("BIC", Creditor.Bic);
+            pmtInf.NewElement("CdtrAgt").NewElement("FinInstnId").NewElement(SepaSchemaUtils.BicElementName(schema), Creditor.Bic);
             pmtInf.NewElement("ChrgBr", "SLEV");
 
             var othr = pmtInf.NewElement("CdtrSchmeId").NewElement("Id")
@@ -178,7 +196,7 @@ namespace SepaWriter
         /// </summary>
         /// <param name="pmtInf">The root nodes for a transaction</param>
         /// <param name="transfer">The transaction to generate</param>
-        private static void GenerateTransaction(XmlElement pmtInf, SepaDebitTransferTransaction transfer)
+        private void GenerateTransaction(XmlElement pmtInf, SepaDebitTransferTransaction transfer)
         {
             var cdtTrfTxInf = pmtInf.NewElement("DrctDbtTxInf");
             var pmtId = cdtTrfTxInf.NewElement("PmtId");
@@ -191,8 +209,13 @@ namespace SepaWriter
             mndtRltdInf.NewElement("MndtId", transfer.MandateIdentification);
             mndtRltdInf.NewElement("DtOfSgntr", StringUtils.FormatDate(transfer.DateOfSignature));
 
-            XmlUtils.CreateBic(cdtTrfTxInf.NewElement("DbtrAgt"), transfer.Debtor);
-            cdtTrfTxInf.NewElement("Dbtr").NewElement("Nm", transfer.Debtor.Name);
+            XmlUtils.CreateBic(cdtTrfTxInf.NewElement("DbtrAgt"), transfer.Debtor, schema);
+            var dbtr = cdtTrfTxInf.NewElement("Dbtr");
+            dbtr.NewElement("Nm", transfer.Debtor.Name);
+            if (transfer.Debtor.Address != null)
+            {
+                AddPostalAddressElements(dbtr, transfer.Debtor.Address);
+            }
             cdtTrfTxInf.NewElement("DbtrAcct").NewElement("Id").NewElement("IBAN", transfer.Debtor.Iban);
 
             if (!string.IsNullOrEmpty(transfer.RemittanceInformation))
@@ -201,7 +224,8 @@ namespace SepaWriter
 
         protected override bool CheckSchema(SepaSchema aSchema)
         {
-            return aSchema == SepaSchema.Pain00800102 || aSchema == SepaSchema.Pain00800103;
+            return aSchema == SepaSchema.Pain00800102 || aSchema == SepaSchema.Pain00800103
+                   || aSchema == SepaSchema.Pain00800108;
         }
     }
 }

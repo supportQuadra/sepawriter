@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netcoreapp3.1;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks>net6.0</TargetFrameworks>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -11,8 +11,10 @@
   <ItemGroup>
     <None Remove="Xsd\pain.001.001.03.xsd" />
     <None Remove="Xsd\pain.001.001.04.xsd" />
+    <None Remove="Xsd\pain.001.001.09.xsd" />
     <None Remove="Xsd\pain.008.001.02.xsd" />
     <None Remove="Xsd\pain.008.001.03.xsd" />
+    <None Remove="Xsd\pain.008.001.08.xsd" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="log4net" Version="2.0.12" />
@@ -21,15 +23,22 @@
   <ItemGroup>
     <EmbeddedResource Include="Xsd\pain.001.001.03.xsd" />
     <EmbeddedResource Include="Xsd\pain.001.001.04.xsd" />
+    <EmbeddedResource Include="Xsd\pain.001.001.09.xsd" />
     <EmbeddedResource Include="Xsd\pain.008.001.02.xsd" />
     <EmbeddedResource Include="Xsd\pain.008.001.03.xsd" />
+    <EmbeddedResource Include="Xsd\pain.008.001.08.xsd" />
   </ItemGroup>
 
   <PropertyGroup>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <RootNamespace>SepaWriter</RootNamespace>
-    <AssemblyName>Perrich.SepaWriter</AssemblyName>
+    <AssemblyName>qd.SepaWriter</AssemblyName>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Description>fork  from perrich/sepawriter</Description>
+    <Company>Quadra Diffusion</Company>
+    <PackAsTool>False</PackAsTool>
+    <PackageProjectUrl></PackageProjectUrl>
+    <Version>1.0.3</Version>
   </PropertyGroup>
 
 </Project>

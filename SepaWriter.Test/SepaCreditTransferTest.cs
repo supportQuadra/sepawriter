@@ -251,6 +251,110 @@ namespace SepaWriter.Test
             validator.Validate(transfert.AsXmlString());
         }
 
+        private static SepaPostalAddress CreateStructuredAddress()
+        {
+            return new SepaPostalAddress
+            {
+                StrtNm = "12 RUE DE LA PAIX",
+                PstCd = "75002",
+                TwnNm = "PARIS",
+                Ctry = "FR"
+            };
+        }
+
+        private static SepaCreditTransfer GetPain00100109Transfert()
+        {
+            var transfert = new SepaCreditTransfer
+            {
+                CreationDate = new DateTime(2026, 11, 02, 10, 30, 00),
+                RequestedExecutionDate = new DateTime(2026, 11, 05),
+                MessageIdentification = "transferID",
+                PaymentInfoId = "paymentInfo",
+                InitiatingPartyName = "Me",
+                Schema = SepaSchema.Pain00100109,
+                Debtor = Debtor
+            };
+
+            var trans = CreateTransaction("Transaction Id 1", 23.45m, "Transaction description");
+            trans.Creditor.Address = CreateStructuredAddress();
+            trans.EndToEndId = "multiple1";
+            transfert.AddCreditTransfer(trans);
+
+            // second transaction without any address: the PstlAdr element must stay optional
+            transfert.AddCreditTransfer(CreateTransaction("Transaction Id 2", 12.56m, "Transaction description 2"));
+
+            return transfert;
+        }
+
+        [Test]
+        public void ShouldValidateThePain00100109XmlSchema()
+        {
+            var transfert = GetPain00100109Transfert();
+
+            var validator = XmlValidator.GetValidator(transfert.Schema);
+            Assert.True(validator.Validate(transfert.AsXmlString()));
+        }
+
+        [Test]
+        public void ShouldValidateThePain00100109XmlSchemaWithAnAddressType()
+        {
+            var transfert = new SepaCreditTransfer
+            {
+                CreationDate = new DateTime(2026, 11, 02, 10, 30, 00),
+                RequestedExecutionDate = new DateTime(2026, 11, 05),
+                MessageIdentification = "transferID",
+                PaymentInfoId = "paymentInfo",
+                InitiatingPartyName = "Me",
+                Schema = SepaSchema.Pain00100109,
+                Debtor = Debtor
+            };
+
+            var address = CreateStructuredAddress();
+            address.AddressType = PostalAddressType.ADDR;
+
+            var trans = CreateTransaction("Transaction Id 1", 23.45m, "Transaction description");
+            trans.Creditor.Address = address;
+            transfert.AddCreditTransfer(trans);
+
+            string result = transfert.AsXmlString();
+
+            // AddressType3Choice since pain.001.001.09
+            Assert.True(result.Contains("<PstlAdr><AdrTp><Cd>ADDR</Cd></AdrTp><StrtNm>12 RUE DE LA PAIX</StrtNm>"));
+            Assert.True(XmlValidator.GetValidator(transfert.Schema).Validate(result));
+        }
+
+        [Test]
+        public void ShouldUseBicFiAndDateChoiceAndPostalAddressForPain00100109()
+        {
+            string result = GetPain00100109Transfert().AsXmlString();
+
+            Assert.True(result.Contains("xmlns=\"urn:iso:std:iso:20022:tech:xsd:pain.001.001.09\""));
+            Assert.True(result.Contains("<DbtrAgt><FinInstnId><BICFI>SOGEFRPPXXX</BICFI></FinInstnId></DbtrAgt>"));
+            Assert.True(result.Contains("<CdtrAgt><FinInstnId><BICFI>AGRIFRPPXXX</BICFI></FinInstnId></CdtrAgt>"));
+            Assert.False(result.Contains("<BIC>"));
+            Assert.True(result.Contains("<ReqdExctnDt><Dt>2026-11-05</Dt></ReqdExctnDt>"));
+            Assert.True(result.Contains("<Cdtr><Nm>THEIR_NAME</Nm><PstlAdr><StrtNm>12 RUE DE LA PAIX</StrtNm><PstCd>75002</PstCd><TwnNm>PARIS</TwnNm><Ctry>FR</Ctry></PstlAdr></Cdtr>"));
+        }
+
+        [Test]
+        public void ShouldKeepBicAndFlatDateForPain00100103()
+        {
+            var transfert = GetOneTransactionCreditTransfert(23.45m);
+            transfert.Schema = SepaSchema.Pain00100103;
+
+            string result = transfert.AsXmlString();
+
+            Assert.True(result.Contains("<DbtrAgt><FinInstnId><BIC>SOGEFRPPXXX</BIC></FinInstnId></DbtrAgt>"));
+            Assert.True(result.Contains("<ReqdExctnDt>2013-02-17</ReqdExctnDt>"));
+            Assert.False(result.Contains("<BICFI>"));
+        }
+
+        [Test]
+        public void ShouldUsePain00100103AsDefaultSchema()
+        {
+            Assert.AreEqual(SepaSchema.Pain00100103, new SepaCreditTransfer().Schema);
+        }
+
         [Test]
         public void ShouldRejectNotAllowedXmlSchema()
         {

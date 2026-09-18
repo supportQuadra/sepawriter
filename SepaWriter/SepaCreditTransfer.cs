@@ -1,6 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Xml;
+using log4net.Util;
 using SepaWriter.Utils;
 
 namespace SepaWriter
@@ -72,9 +75,9 @@ namespace SepaWriter
         /// </summary>
         /// <param name="transfer"></param>
         /// <exception cref="ArgumentNullException">If transfert is null.</exception>
-        public void AddCreditTransfer(SepaCreditTransferTransaction transfer)
+        public void AddCreditTransfer(SepaCreditTransferTransaction transfer, DateTime? requestedExecutionDate = null)
         {
-            AddTransfer(transfer);
+            AddTransfer(transfer, requestedExecutionDate);
         }
 
         /// <summary>
@@ -114,72 +117,110 @@ namespace SepaWriter
                         NewElement("Othr").NewElement("Id", InitiatingPartyId);
                 }
             }
-
-            // Part 2: Payment Information
-            var pmtInf = XmlUtils.GetFirstElement(xml, "CstmrCdtTrfInitn").NewElement("PmtInf");
-            pmtInf.NewElement("PmtInfId", PaymentInfoId ?? MessageIdentification);
-
-            pmtInf.NewElement("PmtMtd", Constant.CreditTransfertPaymentMethod);
-            pmtInf.NewElement("NbOfTxs", numberOfTransactions);
-            pmtInf.NewElement("CtrlSum", StringUtils.FormatAmount(paymentControlSum));
-
-            if (IsInternational)
+            if (payments != null && payments.Count > 0)
             {
-                pmtInf.NewElement("PmtTpInf").NewElement("InstrPrty", "NORM");
-            } else
-            {
-                pmtInf.NewElement("PmtTpInf").NewElement("SvcLvl").NewElement("Cd", "SEPA");
-            }
-            if (LocalInstrumentCode != null)
-                XmlUtils.GetFirstElement(pmtInf, "PmtTpInf").NewElement("LclInstr")
-                        .NewElement("Cd", LocalInstrumentCode);
-
-			if (CategoryPurposeCode != null) {
-				 XmlUtils.GetFirstElement(pmtInf, "PmtTpInf").
-					 NewElement("CtgyPurp").
-					 NewElement("Cd", CategoryPurposeCode);
+                foreach (var payment in payments)
+                {
+                    GeneratePaymentXml(xml, payment);
+				}
 			}
-			
-			pmtInf.NewElement("ReqdExctnDt", StringUtils.FormatDate(RequestedExecutionDate));
-            var dbtr = pmtInf.NewElement("Dbtr");
-            dbtr.NewElement("Nm", Debtor.Name);
-            if (Debtor.Address != null)
+            else
             {
-                AddPostalAddressElements(dbtr, Debtor.Address);
-            }
-			if (InitiatingPartyId != null) {
+				GeneratePaymentXml(xml);
+			}
+
+            return xml;
+        }
+
+
+
+        private void GeneratePaymentXml(XmlDocument xml, SepaPayment<SepaCreditTransferTransaction> payment = null)
+        {
+			var pmtInf = XmlUtils.GetFirstElement(xml, "CstmrCdtTrfInitn").NewElement("PmtInf");
+			pmtInf.NewElement("PmtInfId", PaymentInfoId ?? MessageIdentification);
+
+			pmtInf.NewElement("PmtMtd", Constant.CreditTransfertPaymentMethod);
+
+			int transactionCount = numberOfTransactions;
+            decimal sumControl = paymentControlSum;
+			if (payment != null)
+            {
+				transactionCount = payment.Transactions.Count;
+				sumControl = payment.Transactions.Sum(t => t.Amount);
+
+			}
+			pmtInf.NewElement("NbOfTxs", transactionCount);
+			pmtInf.NewElement("CtrlSum", StringUtils.FormatAmount(sumControl));
+
+			if (IsInternational)
+			{
+				pmtInf.NewElement("PmtTpInf").NewElement("InstrPrty", "NORM");
+			}
+			else
+			{
+				pmtInf.NewElement("PmtTpInf").NewElement("SvcLvl").NewElement("Cd", "SEPA");
+			}
+			if (LocalInstrumentCode != null)
+				XmlUtils.GetFirstElement(pmtInf, "PmtTpInf").NewElement("LclInstr")
+						.NewElement("Cd", LocalInstrumentCode);
+
+			if (CategoryPurposeCode != null)
+			{
+				XmlUtils.GetFirstElement(pmtInf, "PmtTpInf").
+					NewElement("CtgyPurp").
+					NewElement("Cd", CategoryPurposeCode);
+			}
+            DateTime requestedExecutionDate = this.RequestedExecutionDate;
+            if (payment != null)
+                requestedExecutionDate = payment.RequestedExecutionDate;
+			// Since pain.001.001.09, ReqdExctnDt is a DateAndDateTime2Choice (Dt or DtTm)
+			if (SepaSchemaUtils.IsIso20022V2019(schema))
+				pmtInf.NewElement("ReqdExctnDt").NewElement("Dt", StringUtils.FormatDate(requestedExecutionDate));
+			else
+				pmtInf.NewElement("ReqdExctnDt", StringUtils.FormatDate(requestedExecutionDate));
+			var dbtr = pmtInf.NewElement("Dbtr");
+			dbtr.NewElement("Nm", Debtor.Name);
+			if (Debtor.Address != null)
+			{
+				AddPostalAddressElements(dbtr, Debtor.Address);
+			}
+			if (InitiatingPartyId != null)
+			{
 				XmlUtils.GetFirstElement(pmtInf, "Dbtr").
 					NewElement("Id").NewElement("OrgId").
 					NewElement("Othr").NewElement("Id", InitiatingPartyId);
 			}
 
-            var dbtrAcct = pmtInf.NewElement("DbtrAcct");
-            dbtrAcct.NewElement("Id").NewElement("IBAN", Debtor.Iban);
-            dbtrAcct.NewElement("Ccy", DebtorAccountCurrency);
+			var dbtrAcct = pmtInf.NewElement("DbtrAcct");
+			dbtrAcct.NewElement("Id").NewElement("IBAN", Debtor.Iban);
+			dbtrAcct.NewElement("Ccy", DebtorAccountCurrency);
 
-            var finInstnId = pmtInf.NewElement("DbtrAgt").NewElement("FinInstnId");
-            finInstnId.NewElement("BIC", Debtor.Bic);
-            if (Debtor.AgentAddress != null)
-            {
-                AddPostalAddressElements(finInstnId, Debtor.AgentAddress);
-            }
+			var finInstnId = pmtInf.NewElement("DbtrAgt").NewElement("FinInstnId");
+			finInstnId.NewElement(SepaSchemaUtils.BicElementName(schema), Debtor.Bic);
+			if (Debtor.AgentAddress != null)
+			{
+				AddPostalAddressElements(finInstnId, Debtor.AgentAddress);
+			}
 
-            if (IsInternational)
-            {
-                pmtInf.NewElement("ChrgBr", SepaChargeBearerUtils.SepaChargeBearerToString(ChargeBearer));
-            } else
-            {
-                pmtInf.NewElement("ChrgBr", "SLEV");
-            }
+			if (IsInternational)
+			{
+				pmtInf.NewElement("ChrgBr", SepaChargeBearerUtils.SepaChargeBearerToString(ChargeBearer));
+			}
+			else
+			{
+				pmtInf.NewElement("ChrgBr", "SLEV");
+			}
 
             // Part 3: Credit Transfer Transaction Information
-            foreach (var transfer in transactions)
-            {
-                GenerateTransaction(pmtInf, transfer);
-            }
+            List<SepaCreditTransferTransaction> listTransactions = this.transactions;
+            if (payment != null)
+				listTransactions = payment.Transactions;
+			foreach (var transfer in listTransactions)
+			{
+				GenerateTransaction(pmtInf, transfer);
+			}
 
-            return xml;
-        }
+		}
 
         /// <summary>
         /// Generate the Transaction XML part
@@ -196,7 +237,7 @@ namespace SepaWriter
             cdtTrfTxInf.NewElement("Amt")
                        .NewElement("InstdAmt", StringUtils.FormatAmount(transfer.Amount))
                        .SetAttribute("Ccy", transfer.Currency);
-            XmlUtils.CreateBic(cdtTrfTxInf.NewElement("CdtrAgt"), transfer.Creditor);
+            XmlUtils.CreateBic(cdtTrfTxInf.NewElement("CdtrAgt"), transfer.Creditor, schema);
             var cdtr = cdtTrfTxInf.NewElement("Cdtr");
             cdtr.NewElement("Nm", transfer.Creditor.Name);
             if (transfer.Creditor.Address != null)
@@ -231,7 +272,8 @@ namespace SepaWriter
         }
         protected override bool CheckSchema(SepaSchema aSchema)
         {
-            return aSchema == SepaSchema.Pain00100103 || aSchema == SepaSchema.Pain00100104;
+            return aSchema == SepaSchema.Pain00100103 || aSchema == SepaSchema.Pain00100104
+                   || aSchema == SepaSchema.Pain00100109;
         }
     }
 }
